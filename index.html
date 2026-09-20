@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>受付スキャナー（運営者用）</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/html5-qrcode"></script>
+</head>
+<body class="bg-slate-100 min-h-screen flex flex-col items-center justify-start p-4">
+
+  <div class="max-w-md w-full bg-white rounded-xl shadow-lg p-6 space-y-6 my-auto">
+    <div class="text-center space-y-1">
+      <h1 class="text-xl font-bold text-slate-800">受付用 QRスキャナー</h1>
+      <p class="text-xs text-slate-500">保護者のスマホ画面に表示されたQRコードをかざしてください</p>
+    </div>
+
+    <div class="relative overflow-hidden rounded-lg border-2 border-dashed border-slate-300 bg-black">
+      <div id="reader" class="w-full"></div>
+    </div>
+
+    <div id="resultBox" class="hidden p-4 rounded-xl text-center space-y-2">
+      <p id="resultMessage" class="text-lg font-bold"></p>
+      <p id="resultDetail" class="text-sm text-slate-600"></p>
+    </div>
+
+    <button id="restartBtn" onclick="restartScanner()" class="hidden w-full bg-slate-800 hover:bg-slate-900 text-white font-medium py-2.5 rounded-lg transition duration-200 shadow-md">
+      次のコードを読み取る
+    </button>
+  </div>
+
+  <script>
+    // ★★★★ ここにGASで発行したWebアプリのURLを貼り付けます ★★★★
+    const GAS_URL = "https://script.google.com/macros/s/AKfycbzvcs0lKx3SJUoJlkJ3J8XVkArEL9_1NOELO6NIGhv7_-oxAJeRghWJVFUowap4Ws8geg/exec";
+    
+    let html5QrCode = null;
+    let isScanning = true;
+
+    window.addEventListener('load', function() {
+      setTimeout(startScanner, 300);
+    });
+
+    function startScanner() {
+      html5QrCode = new Html5Qrcode("reader");
+      const config = { fps: 10, qrbox: { width: 220, height: 220 } };
+
+      html5QrCode.start(
+        { facingMode: "environment" }, 
+        config, 
+        onScanSuccess, 
+        () => {}
+      ).catch(err => {
+        showCameraError("カメラを起動できませんでした。ブラウザのカメラ権限が「許可」になっているかご確認ください。");
+      });
+    }
+
+    function showCameraError(text) {
+      const box = document.getElementById('resultBox');
+      box.className = "p-4 rounded-xl text-center space-y-2 bg-rose-50 border-2 border-rose-400 text-rose-800";
+      box.classList.remove('hidden');
+      document.getElementById('resultMessage').textContent = "❌ カメラエラー";
+      document.getElementById('resultDetail').textContent = text;
+    }
+
+    function onScanSuccess(decodedText) {
+      if (!isScanning) return;
+      isScanning = false;
+      
+      html5QrCode.stop().then(() => {
+        parseAndCheckIn(decodedText);
+      }).catch(() => {
+        parseAndCheckIn(decodedText);
+      });
+    }
+
+    function parseAndCheckIn(text) {
+      const gradeMatch = text.match(/Grade:\s*([0-9０-９]+)/);
+      const classMatch = text.match(/Class:\s*([0-9０-９]+)/);
+      const noMatch = text.match(/No:\s*([0-9０-９]+)/);
+
+      if (!gradeMatch || !classMatch || !noMatch) {
+        showResult(false, "❌ 無効なQRコード", "このシステムのQRコードではありません。");
+        return;
+      }
+
+      // GitHubからGASのAPIへ通信する (キャッシュ回避用にタイムスタンプ付与)
+      const fetchUrl = `${GAS_URL}?grade=${gradeMatch[1]}&classRoom=${classMatch[1]}&studentNo=${noMatch[1]}&t=${new Date().getTime()}`;
+
+      fetch(fetchUrl)
+        .then(response => response.json())
+        .then(res => showServerResponse(res))
+        .catch(err => showResult(false, "❌ 通信エラー", err.message || "ネットワークを確認してください"));
+    }
+
+    function showServerResponse(res) {
+      const box = document.getElementById('resultBox');
+      const msg = document.getElementById('resultMessage');
+      const detail = document.getElementById('resultDetail');
+      const restartBtn = document.getElementById('restartBtn');
+
+      box.classList.remove('hidden');
+      restartBtn.classList.remove('hidden');
+
+      if (res.success) {
+        if (res.alreadyCheckedIn) {
+          box.className = "p-4 rounded-xl text-center space-y-2 bg-amber-50 border-2 border-amber-400 text-amber-800";
+          msg.textContent = "⚠️ すでに受付済みです";
+        } else {
+          box.className = "p-4 rounded-xl text-center space-y-2 bg-emerald-50 border-2 border-emerald-400 text-emerald-800";
+          msg.textContent = "✅ 受付成功！";
+        }
+        detail.textContent = res.message;
+      } else {
+        box.className = "p-4 rounded-xl text-center space-y-2 bg-rose-50 border-2 border-rose-400 text-rose-800";
+        msg.textContent = "❌ エラー";
+        detail.textContent = res.message;
+      }
+    }
+
+    function showResult(success, title, text) {
+      const box = document.getElementById('resultBox');
+      box.className = "p-4 rounded-xl text-center space-y-2 bg-rose-50 border-2 border-rose-400 text-rose-800";
+      box.classList.remove('hidden');
+      document.getElementById('resultMessage').textContent = title;
+      document.getElementById('resultDetail').textContent = text;
+      document.getElementById('restartBtn').classList.remove('hidden');
+    }
+
+    function restartScanner() {
+      document.getElementById('resultBox').classList.add('hidden');
+      document.getElementById('restartBtn').classList.add('hidden');
+      isScanning = true;
+      startScanner();
+    }
+  </script>
+</body>
+</html>
