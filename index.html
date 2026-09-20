@@ -15,17 +15,19 @@
       <p class="text-xs text-slate-500">保護者のスマホ画面に表示されたQRコードをかざしてください</p>
     </div>
 
+    <!-- カメラプレビュー（起動しっぱなしになります） -->
     <div class="relative overflow-hidden rounded-lg border-2 border-dashed border-slate-300 bg-black">
       <div id="reader" class="w-full"></div>
     </div>
 
+    <!-- 結果表示エリア -->
     <div id="resultBox" class="hidden p-4 rounded-xl text-center space-y-2">
       <p id="resultMessage" class="text-lg font-bold"></p>
       <p id="resultDetail" class="text-sm text-slate-600"></p>
     </div>
 
     <button id="restartBtn" onclick="restartScanner()" class="hidden w-full bg-slate-800 hover:bg-slate-900 text-white font-medium py-2.5 rounded-lg transition duration-200 shadow-md">
-      次のコードを読み取る
+      次の人を読み取る
     </button>
   </div>
 
@@ -63,14 +65,20 @@
     }
 
     function onScanSuccess(decodedText) {
+      // スキャン停止中（通信中や結果表示中）は無視する
       if (!isScanning) return;
-      isScanning = false;
+      isScanning = false; 
       
-      html5QrCode.stop().then(() => {
-        parseAndCheckIn(decodedText);
-      }).catch(() => {
-        parseAndCheckIn(decodedText);
-      });
+      // ★ポイント：カメラ自体は止めず、画面だけ「通信中」に切り替える
+      const box = document.getElementById('resultBox');
+      box.className = "p-4 rounded-xl text-center space-y-2 bg-blue-50 border-2 border-blue-400 text-blue-800 shadow-inner";
+      box.classList.remove('hidden');
+      document.getElementById('resultMessage').textContent = "⏳ データ確認中...";
+      document.getElementById('resultDetail').textContent = "受付処理をしています";
+      document.getElementById('restartBtn').classList.add('hidden');
+
+      // そのままGASへ通信開始
+      parseAndCheckIn(decodedText);
     }
 
     function parseAndCheckIn(text) {
@@ -83,7 +91,7 @@
         return;
       }
 
-      // GitHubからGASのAPIへ通信する (キャッシュ回避用にタイムスタンプ付与)
+      // GitHubからGASのAPIへ通信
       const fetchUrl = `${GAS_URL}?grade=${gradeMatch[1]}&classRoom=${classMatch[1]}&studentNo=${noMatch[1]}&t=${new Date().getTime()}`;
 
       fetch(fetchUrl)
@@ -103,15 +111,15 @@
 
       if (res.success) {
         if (res.alreadyCheckedIn) {
-          box.className = "p-4 rounded-xl text-center space-y-2 bg-amber-50 border-2 border-amber-400 text-amber-800";
+          box.className = "p-4 rounded-xl text-center space-y-2 bg-amber-50 border-2 border-amber-400 text-amber-800 shadow-inner";
           msg.textContent = "⚠️ すでに受付済みです";
         } else {
-          box.className = "p-4 rounded-xl text-center space-y-2 bg-emerald-50 border-2 border-emerald-400 text-emerald-800";
+          box.className = "p-4 rounded-xl text-center space-y-2 bg-emerald-50 border-2 border-emerald-400 text-emerald-800 shadow-inner";
           msg.textContent = "✅ 受付成功！";
         }
         detail.textContent = res.message;
       } else {
-        box.className = "p-4 rounded-xl text-center space-y-2 bg-rose-50 border-2 border-rose-400 text-rose-800";
+        box.className = "p-4 rounded-xl text-center space-y-2 bg-rose-50 border-2 border-rose-400 text-rose-800 shadow-inner";
         msg.textContent = "❌ エラー";
         detail.textContent = res.message;
       }
@@ -119,7 +127,7 @@
 
     function showResult(success, title, text) {
       const box = document.getElementById('resultBox');
-      box.className = "p-4 rounded-xl text-center space-y-2 bg-rose-50 border-2 border-rose-400 text-rose-800";
+      box.className = "p-4 rounded-xl text-center space-y-2 bg-rose-50 border-2 border-rose-400 text-rose-800 shadow-inner";
       box.classList.remove('hidden');
       document.getElementById('resultMessage').textContent = title;
       document.getElementById('resultDetail').textContent = text;
@@ -127,10 +135,10 @@
     }
 
     function restartScanner() {
+      // 結果表示を隠して、スキャン処理だけを再開する（カメラの再起動は不要）
       document.getElementById('resultBox').classList.add('hidden');
       document.getElementById('restartBtn').classList.add('hidden');
       isScanning = true;
-      startScanner();
     }
   </script>
 </body>
